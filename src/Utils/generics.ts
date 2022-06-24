@@ -182,7 +182,7 @@ export async function promiseTimeout<T>(ms: number, promise: (resolve: (v?: T)=>
 }
 
 // generate a random ID to attach to a message
-export const generateMessageID = () => 'BAE5' + randomBytes(6).toString('hex').toUpperCase()
+export const generateMessageID = () => 'ANTO' + randomBytes(6).toString('hex').toUpperCase()
 
 export function bindWaitForEvent<T extends keyof BaileysEventMap<any>>(ev: CommonBaileysEventEmitter<any>, event: T) {
 	return async(check: (u: BaileysEventMap<any>[T]) => boolean, timeoutMs?: number) => {
