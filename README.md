@@ -124,8 +124,6 @@ type SocketConfig = {
 	fetchAgent?: Agent
     /** should the QR be printed in the terminal */
     printQRInTerminal: boolean
-    /** fires a conversationTimestamp & read count update on CIPHERTEXT messages */
-    treatCiphertextMessagesAsReal: boolean
     /** 
      * fetch a message from your store 
      * implement this so that messages failed to send (solves the "this message can take a while" issue) can be retried
@@ -411,7 +409,7 @@ const sendMsg = await sock.sendMessage(id, listMessage)
 
 const reactionMessage = {
     react: {
-        text: "💖",
+        text: "💖", // use an empty string to remove the reaction
         key: message.key
     }
 }

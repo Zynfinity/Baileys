@@ -12,7 +12,7 @@ const MAX_SYNC_ATTEMPTS = 5
 const APP_STATE_SYNC_TIMEOUT_MS = 10_000
 
 export const makeChatsSocket = (config: SocketConfig) => {
-	const { logger, markOnlineOnConnect, treatCiphertextMessagesAsReal, downloadHistory } = config
+	const { logger, markOnlineOnConnect, downloadHistory } = config
 	const sock = makeSocket(config)
 	const {
 		ev,
@@ -22,12 +22,10 @@ export const makeChatsSocket = (config: SocketConfig) => {
 		sendNode,
 		query,
 		onUnexpectedError,
-		emitEventsFromMap,
 	} = sock
 
 	let privacySettings: { [_: string]: string } | undefined
 
-	const mutationMutex = makeMutex()
 	/** this mutex ensures that the notifications (receipts, messages etc.) are processed in order */
 	const processingMutex = makeMutex()
 	/** cache to ensure new history sync events do not have duplicate items */
@@ -527,7 +525,7 @@ export const makeChatsSocket = (config: SocketConfig) => {
 		logger.debug('resyncing main app state')
 
 		await (
-			mutationMutex.mutex(
+			processingMutex.mutex(
 				() => resyncAppState(ALL_WA_PATCH_NAMES, ctx)
 			)
 				.catch(err => (
@@ -546,7 +544,7 @@ export const makeChatsSocket = (config: SocketConfig) => {
 		let initial: LTHashState
 		let encodeResult: { patch: proto.ISyncdPatch, state: LTHashState }
 
-		await mutationMutex.mutex(
+		await processingMutex.mutex(
 			async() => {
 				await authState.keys.transaction(
 					async() => {
@@ -694,33 +692,8 @@ export const makeChatsSocket = (config: SocketConfig) => {
 		])
 	}
 
-	const processMessageLocal = async(msg: proto.IWebMessageInfo) => {
-		// process message and emit events
-		const newEvents = await processMessage(
-			msg,
-			{
-				downloadHistory,
-				historyCache,
-				recvChats,
-				creds: authState.creds,
-				keyStore: authState.keys,
-				logger,
-				treatCiphertextMessagesAsReal
-			}
-		)
-
-		const isAnyHistoryMsg = isHistoryMsg(msg.message)
-		if(isAnyHistoryMsg) {
-			// we only want to sync app state once we've all the history
-			// restart the app state sync timeout
-			logger.debug('restarting app sync timeout')
-			appStateSyncTimeout.start()
-		}
-
-		return newEvents
-	}
-
 	const upsertMessage = async(msg: WAMessage, type: MessageUpsertType) => {
+		const startedBuffer = ev.buffer()
 		ev.emit('messages.upsert', { messages: [msg], type })
 
 		if(!!msg.pushName) {
@@ -737,8 +710,31 @@ export const makeChatsSocket = (config: SocketConfig) => {
 			}
 		}
 
-		const events = await processMessageLocal(msg)
-		emitEventsFromMap(events)
+		// process message and emit events
+		await processMessage(
+			msg,
+			{
+				downloadHistory,
+				ev,
+				historyCache,
+				recvChats,
+				creds: authState.creds,
+				keyStore: authState.keys,
+				logger,
+			}
+		)
+
+		const isAnyHistoryMsg = isHistoryMsg(msg.message)
+		if(isAnyHistoryMsg) {
+			// we only want to sync app state once we've all the history
+			// restart the app state sync timeout
+			logger.debug('restarting app sync timeout')
+			appStateSyncTimeout.start()
+		}
+
+		if(startedBuffer) {
+			await ev.flush()
+		}
 	}
 
 	ws.on('CB:presence', handlePresenceUpdate)
@@ -777,7 +773,6 @@ export const makeChatsSocket = (config: SocketConfig) => {
 
 	return {
 		...sock,
-		mutationMutex,
 		processingMutex,
 		fetchPrivacySettings,
 		upsertMessage,
