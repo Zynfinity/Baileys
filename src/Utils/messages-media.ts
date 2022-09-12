@@ -36,11 +36,11 @@ const getImageProcessingLibrary = async() => {
 			return sharp
 		})()
 	])
-	if(sharp) {
+	if(sharp?.default) {
 		return { sharp }
 	}
 
-	if(jimp) {
+	if(jimp?.read) {
 		return { jimp }
 	}
 
@@ -120,6 +120,15 @@ export const extractImageThumb = async(bufferOrFilePath: Readable | Buffer | str
 		return result
 	}
 }
+
+export const encodeBase64EncodedStringForUpload = (b64: string) => (
+	encodeURIComponent(
+		b64
+			.replace(/\+/g, '-')
+			.replace(/\//g, '_')
+			.replace(/\=+$/, '')
+	)
+)
 
 export const generateProfilePicture = async(mediaUpload: WAMediaUpload) => {
 	let bufferOrFilePath: Buffer | string
@@ -501,6 +510,7 @@ export const getWAUploadToServer = ({ customUploadHosts, fetchAgent, logger }: C
 		}
 
 		const reqBody = Buffer.concat(chunks)
+		fileEncSha256B64 = encodeBase64EncodedStringForUpload(fileEncSha256B64)
 
 		for(const { hostname, maxContentLengthBytes } of hosts) {
 			logger.debug(`uploading to "${hostname}"`)
